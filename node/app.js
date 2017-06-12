@@ -61,16 +61,6 @@ if (!(APP_SECRET && VALIDATION_TOKEN && PAGE_ACCESS_TOKEN && SERVER_URL)) {
 }
 
 /*
- * Use your own validation token. Check that the token used in the Webhook 
- * setup is the same token used here.
- *
- */
-app.get('/webhook', function(req, res) {
-  res.sendStatus(200);
-});
-
-
-/*
  * Start server
  * Webhooks must be available via SSL with a certificate signed by a valid 
  * certificate authority.
