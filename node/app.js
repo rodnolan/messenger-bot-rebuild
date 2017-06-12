@@ -189,7 +189,8 @@ function receivedMessage(event) {
     switch (lcm) {
       // if the text matches any special keywords, handle them accordingly
       case 'help':
-        sendHelpOptions(senderID);
+        //sendHelpOptionsAsQuickReplies(senderID);
+        sendHelpOptionsAsButtonTemplates(senderID);
         break;
       
       default:
@@ -203,8 +204,8 @@ function receivedMessage(event) {
  * Send a message with the four Quick Reply buttons that will allow the user to get started.
  *
  */
-function sendHelpOptions(recipientId) {
-  console.log("[sendHelpOptions] Sending the help options menu"); 
+function sendHelpOptionsAsQuickReplies(recipientId) {
+  console.log("[sendHelpOptionsAsQuickReplies] Sending the help options menu"); 
   var messageData = {
     recipient: {
       id: recipientId
@@ -239,6 +240,55 @@ function sendHelpOptions(recipientId) {
   callSendAPI(messageData);
 }
 
+
+/*
+ * Send a message with buttons that allow the user to select from 
+ * three of the four features.
+ *
+ */
+function sendHelpOptionsAsButtonTemplates(recipientId) {
+  console.log("[sendHelpOptionsAsButtonTemplates] Sending the help options menu"); 
+  var messageData = {
+    recipient: {
+      id: recipientId
+    },
+    message:{
+      attachment:{
+        type:"template",
+        payload:{
+          template_type:"button",
+          text:"Pick one of the three features listed below to learn more. Other features will be availble after you get started.",
+          buttons:[
+            {
+              "type":"postback",
+              "title":"Rotation",
+              "payload":"QR_ROTATION_1"
+            }
+            ,{
+              "type":"postback",
+              "title":"Photo",
+              "payload":"QR_PHOTO_1"
+            }
+            ,{
+              "type":"postback",
+              "title":"Caption",
+              "payload":"QR_CAPTION_1"
+            }
+            // ,{
+            //   "type":"postback",
+            //   "title":"Background",
+            //   "payload":"QR_BACKGROUND_1"
+            // }
+            // limit of up to three buttons 
+          ]
+        }
+      }
+    }
+  };
+
+  callSendAPI(messageData);
+}
+
 /*
  * Someone tapped one of the Quick Reply buttons so 
  * respond with the appropriate content
@@ -254,7 +304,7 @@ function handleQuickReplyResponse(event) {
     quickReplyPayload, senderID, pageID, JSON.stringify(message));
   
   // use linear conversation with one interaction per piece of content
-  //respondToHelpRequestWithLinearPhotos(senderID, quickReplyPayload);
+  // respondToHelpRequestWithLinearPhotos(senderID, quickReplyPayload);
   
   // use branched conversation with one interaction per feature (each of which contains a variable number of content pieces)
   respondToHelpRequestWithTemplates(senderID, quickReplyPayload);
@@ -285,7 +335,7 @@ function respondToHelpRequestWithTemplates(recipientId, requestForHelpOnFeature)
 
   // Since there are only four options in total, we will provide 
   // buttons for each of the remaining three with each section. 
-  // This provides the user with maximum flexibility
+  // This provides the user with maximum flexibility to navigate
 
   switch (requestForHelpOnFeature) {
     case 'QR_ROTATION_1':
@@ -447,8 +497,9 @@ function respondToHelpRequestWithLinearPhotos(recipientId, helpRequestType) {
       "content_type":"text",
       "title":"Continue",
       "payload":""
-    } // this option may be removed with quickReplies.pop() if you are at the end of a branch in the help tree
-      // in this case it makes no sense to continue so you just offer one option: to start over
+    } // the Continue option only makes sense if there is more content to show 
+      // remove this option when you are at the end of a branch in the content tree
+      // i.e.: when you are showing the last message for the selected feature
   ];
   
   // to send an image attachment in a message, just set the payload property of this attachment object
