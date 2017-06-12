@@ -153,8 +153,7 @@ function sendTextMessage(recipientId, messageText) {
       id: recipientId
     },
     message: {
-      text: messageText, // utf-8, 640-character max
-      metadata: "DEVELOPER_DEFINED_METADATA"
+      text: messageText // utf-8, 640-character max
     }
   };
 
