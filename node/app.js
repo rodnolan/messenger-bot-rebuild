@@ -144,23 +144,6 @@ app.post('/webhook', function (req, res) {
 });
 
 /*
- * Send a text message using the Send API.
- *
- */
-function sendTextMessage(recipientId, messageText) {
-  var messageData = {
-    recipient: {
-      id: recipientId
-    },
-    message: {
-      text: messageText // utf-8, 640-character max
-    }
-  };
-
-  callSendAPI(messageData);
-}
-
-/*
  * Call the Send API. The message data goes in the body. If successful, we'll 
  * get the message id in a response 
  *
