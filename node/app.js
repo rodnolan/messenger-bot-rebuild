@@ -189,8 +189,7 @@ function receivedMessage(event) {
     switch (lcm) {
       // if the text matches any special keywords, handle them accordingly
       case 'help':
-        //sendHelpOptionsAsQuickReplies(senderID);
-        sendHelpOptionsAsButtonTemplates(senderID);
+        sendHelpOptionsAsQuickReplies(senderID);
         break;
       
       default:
@@ -234,55 +233,6 @@ function sendHelpOptionsAsQuickReplies(recipientId) {
           "payload":"QR_BACKGROUND_1"
         }
       ]
-    }
-  };
-
-  callSendAPI(messageData);
-}
-
-
-/*
- * Send a message with buttons that allow the user to select from 
- * three of the four features.
- *
- */
-function sendHelpOptionsAsButtonTemplates(recipientId) {
-  console.log("[sendHelpOptionsAsButtonTemplates] Sending the help options menu"); 
-  var messageData = {
-    recipient: {
-      id: recipientId
-    },
-    message:{
-      attachment:{
-        type:"template",
-        payload:{
-          template_type:"button",
-          text:"Pick one of the three features listed below to learn more. Other features will be availble after you get started.",
-          buttons:[
-            {
-              "type":"postback",
-              "title":"Rotation",
-              "payload":"QR_ROTATION_1"
-            }
-            ,{
-              "type":"postback",
-              "title":"Photo",
-              "payload":"QR_PHOTO_1"
-            }
-            ,{
-              "type":"postback",
-              "title":"Caption",
-              "payload":"QR_CAPTION_1"
-            }
-            // ,{
-            //   "type":"postback",
-            //   "title":"Background",
-            //   "payload":"QR_BACKGROUND_1"
-            // }
-            // limit of up to three buttons 
-          ]
-        }
-      }
     }
   };
 
