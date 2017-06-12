@@ -167,33 +167,10 @@ function receivedMessage(event) {
   console.log("[receivedMessage] user (%d) page (%d) timestamp (%d) and message (%s)", 
     senderID, pageID, timeOfMessage, JSON.stringify(message));
 
-  if (message.quick_reply) {
-    console.log("[receivedMessage] quick_reply.payload (%s)", 
-      message.quick_reply.payload);
-    handleQuickReplyResponse(event);
-    return;
-  }
-
   var messageText = message.text;
   if (messageText) {
     sendTextMessage(senderID, messageText);
   }
-}
-
-/*
- * Someone tapped one of the Quick Reply buttons so 
- * respond with the appropriate content
- *
- */
-function handleQuickReplyResponse(event) {
-  var senderID = event.sender.id;
-  var pageID = event.recipient.id;
-  var message = event.message;
-  var quickReplyPayload = message.quick_reply.payload;
-  
-  console.log("[handleQuickReplyResponse] Handling quick reply response (%s) from sender (%d) to page (%d) with message (%s)", 
-    quickReplyPayload, senderID, pageID, JSON.stringify(message));
-      
 }
 
 /*
