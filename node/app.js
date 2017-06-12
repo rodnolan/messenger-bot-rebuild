@@ -124,15 +124,7 @@ app.post('/webhook', function (req, res) {
       var pageID = pageEntry.id;
       var timeOfEvent = pageEntry.time;
 
-      // iterate over each messaging event
-      pageEntry.messaging.forEach(function(messagingEvent) {
-
-        let propertyNames = [];
-        for (var prop in messagingEvent) { propertyNames.push(prop)}
-        console.log("[app.post] Webhook received a messagingEvent with properties: ", propertyNames.join());
-        console.log("[app.post] Webhook is not prepared to handle this message.");
-
-      });
+      
     });
 
     // Assume all went well.
