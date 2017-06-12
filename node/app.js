@@ -135,10 +135,6 @@ app.post('/webhook', function (req, res) {
           // someone sent a message
           receivedMessage(messagingEvent);
 
-        } else if (messagingEvent.delivery) {
-          // messenger platform sent a delivery confirmation
-          receivedDeliveryConfirmation(messagingEvent);
-
         } else {
           console.log("[app.post] Webhook is not prepared to handle this message.");
 
@@ -198,31 +194,6 @@ function handleQuickReplyResponse(event) {
   console.log("[handleQuickReplyResponse] Handling quick reply response (%s) from sender (%d) to page (%d) with message (%s)", 
     quickReplyPayload, senderID, pageID, JSON.stringify(message));
       
-}
-
-/*
- * Delivery Confirmation Event
- *
- * This event is sent to confirm the delivery of a message. Read more about 
- * these fields at https://developers.facebook.com/docs/messenger-platform/webhook-reference/message-delivered
- *
- */
-function receivedDeliveryConfirmation(event) {
-  var senderID = event.sender.id; // the user who sent the message
-  var recipientID = event.recipient.id; // the page they sent it from
-  var delivery = event.delivery;
-  var messageIDs = delivery.mids;
-  var watermark = delivery.watermark;
-  var sequenceNumber = delivery.seq;
-
-  if (messageIDs) {
-    messageIDs.forEach(function(messageID) {
-      console.log("[receivedDeliveryConfirmation] Message with ID %s was delivered", 
-        messageID);
-    });
-  }
-
-  console.log("[receivedDeliveryConfirmation] All messages before timestamp %d were delivered.", watermark);
 }
 
 /*
