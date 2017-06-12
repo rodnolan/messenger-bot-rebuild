@@ -184,59 +184,8 @@ function receivedMessage(event) {
 
   var messageText = message.text;
   if (messageText) {
-
-    var lcm = messageText.toLowerCase();
-    switch (lcm) {
-      // if the text matches any special keywords, handle them accordingly
-      case 'help':
-        sendHelpOptionsAsQuickReplies(senderID);
-        break;
-      
-      default:
-        // otherwise, just echo it back to the sender
-        sendTextMessage(senderID, messageText);
-    }
+    sendTextMessage(senderID, messageText);
   }
-}
-
-/*
- * Send a message with the four Quick Reply buttons that will allow the user to get started.
- *
- */
-function sendHelpOptionsAsQuickReplies(recipientId) {
-  console.log("[sendHelpOptionsAsQuickReplies] Sending the help options menu"); 
-  var messageData = {
-    recipient: {
-      id: recipientId
-    },
-    message: {
-      text: "Select a feature to learn more.",
-      quick_replies: [
-        {
-          "content_type":"text",
-          "title":"Rotation",
-          "payload":"QR_ROTATION_1"
-        },
-        {
-          "content_type":"text",
-          "title":"Photo",
-          "payload":"QR_PHOTO_1"
-        },
-        {
-          "content_type":"text",
-          "title":"Caption",
-          "payload":"QR_CAPTION_1"
-        },
-        {
-          "content_type":"text",
-          "title":"Background",
-          "payload":"QR_BACKGROUND_1"
-        }
-      ]
-    }
-  };
-
-  callSendAPI(messageData);
 }
 
 /*
