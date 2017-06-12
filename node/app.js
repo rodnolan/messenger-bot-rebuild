@@ -25,8 +25,8 @@ app.use(bodyParser.json({ verify: verifyRequestSignature }));
 app.use(express.static('public'));
 
 /*
- * Be sure to setup your config values before running this code. You can 
- * set them using environment variables or modifying the config file in /config.
+ * Open config/default.json and set your config values before running this code. 
+ * You can also set them using environment variables.
  *
  */
 
@@ -45,15 +45,49 @@ const PAGE_ACCESS_TOKEN = (process.env.MESSENGER_PAGE_ACCESS_TOKEN) ?
   (process.env.MESSENGER_PAGE_ACCESS_TOKEN) :
   config.get('pageAccessToken');
 
-// URL where the app is running (include protocol). Used to point to scripts and 
-// assets located at this address. 
+// URL where the app is running. Used to point to scripts and 
+// assets located at this address. DO NOT INCLUDE THE PROTOCOL
 const SERVER_URL = (process.env.SERVER_URL) ?
   (process.env.SERVER_URL) :
   config.get('serverURL');
 
+// The protocol must be HTTPS so don't allow it to be configurable
+// avoid accidental misconfiguration by hard coding it
+const IMG_BASE_PATH = 'https://' + SERVER_URL + "/assets/screenshots/";
+
+// make sure that everything has been properly configured
 if (!(APP_SECRET && VALIDATION_TOKEN && PAGE_ACCESS_TOKEN && SERVER_URL)) {
   console.error("Missing config values");
   process.exit(1);
+}
+
+/*
+ * Verify that the callback came from Facebook. Using the App Secret from 
+ * your App Dashboard, we can verify the signature that is sent with each 
+ * callback in the x-hub-signature field, located in the header.
+ *
+ * https://developers.facebook.com/docs/graph-api/webhooks#setup
+ *
+ */
+function verifyRequestSignature(req, res, buf) {
+  var signature = req.headers["x-hub-signature"];
+
+  if (!signature) {
+    // In DEV, log an error. In PROD, throw an error.
+    console.error("Couldn't validate the signature.");
+  } else {
+    var elements = signature.split('=');
+    var method = elements[0];
+    var signatureHash = elements[1];
+
+    var expectedHash = crypto.createHmac('sha1', APP_SECRET)
+                        .update(buf)
+                        .digest('hex');
+
+    if (signatureHash != expectedHash) {
+      throw new Error("Couldn't validate the request signature.");
+    }
+  }
 }
 
 /*
@@ -64,7 +98,7 @@ if (!(APP_SECRET && VALIDATION_TOKEN && PAGE_ACCESS_TOKEN && SERVER_URL)) {
 app.get('/webhook', function(req, res) {
   if (req.query['hub.mode'] === 'subscribe' &&
       req.query['hub.verify_token'] === VALIDATION_TOKEN) {
-    console.log("Validating webhook");
+    console.log("[app.get] Validating webhook");
     res.status(200).send(req.query['hub.challenge']);
   } else {
     console.error("Failed validation. Make sure the validation tokens match.");
@@ -85,28 +119,33 @@ app.post('/webhook', function (req, res) {
 
   // Make sure this is a page subscription
   if (data.object == 'page') {
-    // Iterate over each entry
-    // There may be multiple if batched
+    // entries may be batched so iterate over each one
     data.entry.forEach(function(pageEntry) {
       var pageID = pageEntry.id;
       var timeOfEvent = pageEntry.time;
 
-      // Iterate over each messaging event
+      // iterate over each messaging event
       pageEntry.messaging.forEach(function(messagingEvent) {
-        if (messagingEvent.optin) {
-          receivedAuthentication(messagingEvent);
-        } else if (messagingEvent.message) {
+
+        let propertyNames = [];
+        for (var prop in messagingEvent) { propertyNames.push(prop)}
+        console.log("[app.post] Webhook received a messagingEvent with properties: ", propertyNames.join());
+        
+        if (messagingEvent.message) {
+          // someone sent a message
           receivedMessage(messagingEvent);
+
         } else if (messagingEvent.delivery) {
+          // messenger platform sent a delivery confirmation
           receivedDeliveryConfirmation(messagingEvent);
+
         } else if (messagingEvent.postback) {
+          // user replied by tapping one of our postback buttons
           receivedPostback(messagingEvent);
-        } else if (messagingEvent.read) {
-          receivedMessageRead(messagingEvent);
-        } else if (messagingEvent.account_linking) {
-          receivedAccountLink(messagingEvent);
+
         } else {
-          console.log("Webhook received unknown messagingEvent: ", messagingEvent);
+          console.log("[app.post] Webhook is not prepared to handle this message.");
+
         }
       });
     });
@@ -120,194 +159,43 @@ app.post('/webhook', function (req, res) {
 });
 
 /*
- * This path is used for account linking. The account linking call-to-action
- * (sendAccountLinking) is pointed to this URL. 
- * 
- */
-// app.get('/authorize', function(req, res) {
-//   var accountLinkingToken = req.query.account_linking_token;
-//   var redirectURI = req.query.redirect_uri;
-
-//   // Authorization Code should be generated per user by the developer. This will 
-//   // be passed to the Account Linking callback.
-//   var authCode = "1234567890";
-
-//   // Redirect users to this URI on successful login
-//   var redirectURISuccess = redirectURI + "&authorization_code=" + authCode;
-
-//   res.render('authorize', {
-//     accountLinkingToken: accountLinkingToken,
-//     redirectURI: redirectURI,
-//     redirectURISuccess: redirectURISuccess
-//   });
-// });
-
-/*
- * Verify that the callback came from Facebook. Using the App Secret from 
- * the App Dashboard, we can verify the signature that is sent with each 
- * callback in the x-hub-signature field, located in the header.
- *
- * https://developers.facebook.com/docs/graph-api/webhooks#setup
- *
- */
-function verifyRequestSignature(req, res, buf) {
-  var signature = req.headers["x-hub-signature"];
-
-  if (!signature) {
-    // For testing, let's log an error. In production, you should throw an 
-    // error.
-    console.error("Couldn't validate the signature.");
-  } else {
-    var elements = signature.split('=');
-    var method = elements[0];
-    var signatureHash = elements[1];
-
-    var expectedHash = crypto.createHmac('sha1', APP_SECRET)
-                        .update(buf)
-                        .digest('hex');
-
-    if (signatureHash != expectedHash) {
-      throw new Error("Couldn't validate the request signature.");
-    }
-  }
-}
-
-/*
- * Authorization Event
- *
- * The value for 'optin.ref' is defined in the entry point. For the "Send to 
- * Messenger" plugin, it is the 'data-ref' field. Read more at 
- * https://developers.facebook.com/docs/messenger-platform/webhook-reference/authentication
- *
- */
-// function receivedAuthentication(event) {
-//   var senderID = event.sender.id;
-//   var recipientID = event.recipient.id;
-//   var timeOfAuth = event.timestamp;
-
-//   // The 'ref' field is set in the 'Send to Messenger' plugin, in the 'data-ref'
-//   // The developer can set this to an arbitrary value to associate the 
-//   // authentication callback with the 'Send to Messenger' click event. This is
-//   // a way to do account linking when the user clicks the 'Send to Messenger' 
-//   // plugin.
-//   var passThroughParam = event.optin.ref;
-
-//   console.log("Received authentication for user %d and page %d with pass " +
-//     "through param '%s' at %d", senderID, recipientID, passThroughParam, 
-//     timeOfAuth);
-
-//   // When an authentication is received, we'll send a message back to the sender
-//   // to let them know it was successful.
-//   sendTextMessage(senderID, "Authentication successful");
-// }
-
-/*
  * Message Event
  *
  * This event is called when a message is sent to your page. The 'message' 
  * object format can vary depending on the kind of message that was received.
  * Read more at https://developers.facebook.com/docs/messenger-platform/webhook-reference/message-received
- *
- * For this example, we're going to echo any text that we get. If we get some 
- * special keywords ('button', 'generic', 'receipt'), then we'll send back
- * examples of those bubbles to illustrate the special message bubbles we've 
- * created. If we receive a message with an attachment (image, video, audio), 
- * then we'll simply confirm that we've received the attachment.
  * 
  */
 function receivedMessage(event) {
   var senderID = event.sender.id;
-  var recipientID = event.recipient.id;
+  var pageID = event.recipient.id;
   var timeOfMessage = event.timestamp;
   var message = event.message;
 
-  console.log("Received message for user %d and page %d at %d with message:", 
-    senderID, recipientID, timeOfMessage);
-  console.log(JSON.stringify(message));
+  console.log("[receivedMessage] user (%d) page (%d) timestamp (%d) and message (%s)", 
+    senderID, pageID, timeOfMessage, JSON.stringify(message));
 
-  var isEcho = message.is_echo;
-  var messageId = message.mid;
-  var appId = message.app_id;
-  var metadata = message.metadata;
-
-  // You may get a text or attachment but not both
-  var messageText = message.text;
-  var messageAttachments = message.attachments;
-  var quickReply = message.quick_reply;
-
-  if (isEcho) {
-    // Just logging message echoes to console
-    console.log("Received echo for message %s and app %d with metadata %s", 
-      messageId, appId, metadata);
-    return;
-  } else if (quickReply) {
+  if (message.quick_reply) {
+    console.log("[receivedMessage] quick_reply.payload (%s)", 
+      message.quick_reply.payload);
     handleQuickReplyResponse(event);
     return;
   }
 
+  var messageText = message.text;
   if (messageText) {
 
-    // If we receive a text message, check to see if it matches any special
-    // keywords and send back the corresponding example. Otherwise, just echo
-    // the text we received.
-    switch (messageText) {
-      case 'image':
-        sendImageMessage(senderID);
-        break;
-
-      case 'gif':
-        sendGifMessage(senderID);
-        break;
-
-      case 'audio':
-        sendAudioMessage(senderID);
-        break;
-
-      case 'video':
-        sendVideoMessage(senderID);
-        break;
-
-      case 'file':
-        sendFileMessage(senderID);
-        break;
-
-      case 'button':
-        sendButtonMessage(senderID);
-        break;
-
-      case 'generic':
-        sendGenericMessage(senderID);
-        break;
-
-      case 'receipt':
-        sendReceiptMessage(senderID);
-        break;
-
+    var lcm = messageText.toLowerCase();
+    switch (lcm) {
+      // if the text matches any special keywords, handle them accordingly
       case 'help':
         sendHelpOptions(senderID);
         break;
-
-      case 'read receipt':
-        sendReadReceipt(senderID);
-        break;
-
-      case 'typing on':
-        sendTypingOn(senderID);
-        break;
-
-      case 'typing off':
-        sendTypingOff(senderID);
-        break;
-
-      case 'account linking':
-        sendAccountLinking(senderID);
-        break;
-
+      
       default:
+        // otherwise, just echo it back to the sender
         sendTextMessage(senderID, messageText);
     }
-  } else if (messageAttachments) {
-    sendTextMessage(senderID, "Message with attachment received");
   }
 }
 
@@ -316,6 +204,7 @@ function receivedMessage(event) {
  *
  */
 function sendHelpOptions(recipientId) {
+  console.log("[sendHelpOptions] Sending the help options menu"); 
   var messageData = {
     recipient: {
       id: recipientId
@@ -326,22 +215,22 @@ function sendHelpOptions(recipientId) {
         {
           "content_type":"text",
           "title":"Rotation",
-          "payload":"QR_ROTATION_A"
+          "payload":"QR_ROTATION_1"
         },
         {
           "content_type":"text",
           "title":"Photo",
-          "payload":"QR_PHOTO_A"
+          "payload":"QR_PHOTO_1"
         },
         {
           "content_type":"text",
-          "title":"Poster Text",
-          "payload":"QR_POSTER_TEXT_A"
+          "title":"Caption",
+          "payload":"QR_CAPTION_1"
         },
         {
           "content_type":"text",
-          "title":"Background Color",
-          "payload":"QR_BACKGROUND_COLOR_A"
+          "title":"Background",
+          "payload":"QR_BACKGROUND_1"
         }
       ]
     }
@@ -350,25 +239,19 @@ function sendHelpOptions(recipientId) {
   callSendAPI(messageData);
 }
 
+/*
+ * Someone tapped one of the Quick Reply buttons so 
+ * respond with the appropriate content
+ *
+ */
 function handleQuickReplyResponse(event) {
   var senderID = event.sender.id;
-  var recipientID = event.recipient.id;
+  var pageID = event.recipient.id;
   var message = event.message;
   var quickReplyPayload = message.quick_reply.payload;
   
-  console.log("Handling quick reply response (%s) from sender (%d) to page (%d) with message:", quickReplyPayload, senderID, recipientID);
-  console.log(JSON.stringify(message));
-
-  //var isEcho = message.is_echo;
-  var messageId = message.mid;
-  var appId = message.app_id;
-  var metadata = message.metadata;
-
-  // You may get a text or attachment but not both
-  var messageText = message.text;
-  var messageAttachments = message.attachments;
-  //sendTextMessage(senderID, "You chose " + quickReplyPayload);
-  console.log("\nUser %s selected %s", senderID, quickReplyPayload)
+  console.log("[handleQuickReplyResponse] Handling quick reply response (%s) from sender (%d) to page (%d) with message (%s)", 
+    quickReplyPayload, senderID, pageID, JSON.stringify(message));
   
   // use linear conversation with one interaction per piece of content
   //respondToHelpRequestWithLinearPhotos(senderID, quickReplyPayload);
@@ -378,153 +261,153 @@ function handleQuickReplyResponse(event) {
   
 }
 
+/*
+ * This response uses templateElements to present the user with a carousel
+ * You send ALL of the content for the selected feature and they can 
+ * swipe from side to side to see it
+ *
+ */
 function respondToHelpRequestWithTemplates(recipientId, requestForHelpOnFeature) {
-  var imgBasePath = SERVER_URL + "/assets/screenshots/";
+  console.log("[respondToHelpRequestWithTemplates] handling help request for %s",
+    requestForHelpOnFeature);
   var templateElements = [];
-  var sectionButtons = [
-    {
-      type: "postback",
-      title: "",
-      payload: "",
-    },
-    {
-      type: "postback",
-      title: "",
-      payload: "",
-    }
-  ];
+  var sectionButtons = [];
+  // each button must be of type postback but title
+  // and payload are variable depending on which 
+  // set of options you want to provide
+  var addSectionButton = function(title, payload) {
+    sectionButtons.push({
+      type: 'postback',
+      title: title,
+      payload: payload
+    });
+  }
+
+  // Since there are only four options in total, we will provide 
+  // buttons for each of the remaining three with each section. 
+  // This provides the user with maximum flexibility
 
   switch (requestForHelpOnFeature) {
-    case 'QR_ROTATION_A':
-      
-      sectionButtons[0].title = "Background Color";
-      sectionButtons[0].payload = "QR_BACKGROUND_COLOR_A";
-      sectionButtons[1].title = "Photo";
-      sectionButtons[1].payload = "QR_PHOTO_A";
+    case 'QR_ROTATION_1':
+      addSectionButton('Photo', 'QR_PHOTO_1');
+      addSectionButton('Caption', 'QR_CAPTION_1');
+      addSectionButton('Background', 'QR_BACKGROUND_1');
       
       templateElements.push(
         {
           title: "Rotation",
           subtitle: "portrait mode",
-          image_url: imgBasePath + "01-rotate-landscape.png",
+          image_url: IMG_BASE_PATH + "01-rotate-landscape.png",
           buttons: sectionButtons 
         }, 
         {
           title: "Rotation",
           subtitle: "landscape mode",
-          image_url: imgBasePath + "02-rotate-portrait.png",
+          image_url: IMG_BASE_PATH + "02-rotate-portrait.png",
           buttons: sectionButtons 
         }
       );
     break; 
-    case 'QR_PHOTO_A':
-      
-      sectionButtons[0].title = "Rotation";
-      sectionButtons[0].payload = "QR_ROTATION_A";
-      sectionButtons[1].title = "Caption";
-      sectionButtons[1].payload = "QR_POSTER_TEXT_A";
+    case 'QR_PHOTO_1':
+      addSectionButton('Rotation', 'QR_ROTATION_1');
+      addSectionButton('Caption', 'QR_CAPTION_1');
+      addSectionButton('Background', 'QR_BACKGROUND_1');
 
       templateElements.push(
         {
           title: "Photo Picker",
           subtitle: "click to start",
-          image_url: imgBasePath + "03-photo-hover.png",
+          image_url: IMG_BASE_PATH + "03-photo-hover.png",
           buttons: sectionButtons 
         }, 
         {
           title: "Photo Picker",
           subtitle: "Downloads folder",
-          image_url: imgBasePath + "04-photo-list.png",
+          image_url: IMG_BASE_PATH + "04-photo-list.png",
           buttons: sectionButtons 
         },
         {
           title: "Photo Picker",
           subtitle: "photo selected",
-          image_url: imgBasePath + "05-photo-selected.png",
+          image_url: IMG_BASE_PATH + "05-photo-selected.png",
           buttons: sectionButtons 
         }        
       );
     break; 
-    case 'QR_POSTER_TEXT_A':
-      
-      sectionButtons[0].title = "Photo";
-      sectionButtons[0].payload = "QR_PHOTO_A";
-      sectionButtons[1].title = "Background Color";
-      sectionButtons[1].payload = "QR_BACKGROUND_COLOR_A";
+    case 'QR_CAPTION_1':
+      addSectionButton('Rotation', 'QR_ROTATION_1');
+      addSectionButton('Photo', 'QR_PHOTO_1');
+      addSectionButton('Background', 'QR_BACKGROUND_1');
 
       templateElements.push(
         {
           title: "Caption",
           subtitle: "click to start",
-          image_url: imgBasePath + "06-text-hover.png",
+          image_url: IMG_BASE_PATH + "06-text-hover.png",
           buttons: sectionButtons 
         }, 
         {
           title: "Caption",
           subtitle: "enter text",
-          image_url: imgBasePath + "07-text-mid-entry.png",
+          image_url: IMG_BASE_PATH + "07-text-mid-entry.png",
           buttons: sectionButtons 
         },
         {
           title: "Caption",
           subtitle: "click OK",
-          image_url: imgBasePath + "08-text-entry-done.png",
+          image_url: IMG_BASE_PATH + "08-text-entry-done.png",
           buttons: sectionButtons 
         },
         {
           title: "Caption",
           subtitle: "Caption done",
-          image_url: imgBasePath + "09-text-complete.png",
+          image_url: IMG_BASE_PATH + "09-text-complete.png",
           buttons: sectionButtons 
         }
       );
     break; 
-    case 'QR_BACKGROUND_COLOR_A':
-      
-      sectionButtons[0].title = "Caption";
-      sectionButtons[0].payload = "QR_POSTER_TEXT_A";
-      sectionButtons[1].title = "Rotate";
-      sectionButtons[1].payload = "QR_ROTATION_A";
+    case 'QR_BACKGROUND_1':
+      addSectionButton('Rotation', 'QR_ROTATION_1');
+      addSectionButton('Photo', 'QR_PHOTO_1');
+      addSectionButton('Caption', 'QR_CAPTION_1');
 
       templateElements.push(
         {
-          title: "Color Picker",
+          title: "Background Color Picker",
           subtitle: "click to start",
-          image_url: imgBasePath + "10-background-picker-hover.png",
+          image_url: IMG_BASE_PATH + "10-background-picker-hover.png",
           buttons: sectionButtons 
         },
         {
-          title: "Color Picker",
+          title: "Background Color Picker",
           subtitle: "click current color",
-          image_url: imgBasePath + "11-background-picker-appears.png",
+          image_url: IMG_BASE_PATH + "11-background-picker-appears.png",
           buttons: sectionButtons 
         },
         {
-          title: "Color Picker",
+          title: "Background Color Picker",
           subtitle: "select new color",
-          image_url: imgBasePath + "12-background-picker-selection.png",
+          image_url: IMG_BASE_PATH + "12-background-picker-selection.png",
           buttons: sectionButtons 
         }, 
         {
-          title: "Color Picker",
+          title: "Background Color Picker",
           subtitle: "click ok",
-          image_url: imgBasePath + "13-background-picker-selection-made.png",
+          image_url: IMG_BASE_PATH + "13-background-picker-selection-made.png",
           buttons: sectionButtons 
         },
         {
-          title: "Color Picker",
+          title: "Background Color Picker",
           subtitle: "color is applied",
-          image_url: imgBasePath + "14-background-changed.png",
+          image_url: IMG_BASE_PATH + "14-background-changed.png",
           buttons: sectionButtons 
         }
-    );
+      );
     break; 
-
   }
 
   if (templateElements.length < 2) {
-    console.log("add at least two elements");
-    return;
+    console.error("each template should have at least two elements");
   }
   
   var messageData = {
@@ -545,9 +428,14 @@ function respondToHelpRequestWithTemplates(recipientId, requestForHelpOnFeature)
   callSendAPI(messageData);
 }
 
-
+/*
+ * This response uses image attachments to illustrate each step of each feature.
+ * This is less flexible because you are limited in the number of options you can
+ * provide for the user. This technique is best for cases where the content should
+ * be consumed in a strict linear order.
+ *
+ */
 function respondToHelpRequestWithLinearPhotos(recipientId, helpRequestType) {
-  var imgBasePath = SERVER_URL + "/assets/screenshots/";
   var textToSend = '';
   var quickReplies = [
     {
@@ -556,10 +444,11 @@ function respondToHelpRequestWithLinearPhotos(recipientId, helpRequestType) {
       "payload":"QR_RESTART"
     }, // this option should always be present because it allows the user to start over
     {
-        "content_type":"text",
-        "title":"Continue",
-        "payload":""
+      "content_type":"text",
+      "title":"Continue",
+      "payload":""
     } // this option may be removed with quickReplies.pop() if you are at the end of a branch in the help tree
+      // in this case it makes no sense to continue so you just offer one option: to start over
   ];
   
   // to send an image attachment in a message, just set the payload property of this attachment object
@@ -576,21 +465,21 @@ function respondToHelpRequestWithLinearPhotos(recipientId, helpRequestType) {
     break;
     
     // the Rotation feature
-    case 'QR_ROTATION_A' :
+    case 'QR_ROTATION_1' :
       textToSend = 'Click the Rotate button to toggle the poster\'s orientation between landscape and portrait mode.';
-      quickReplies[1].payload = "QR_ROTATION_B";
+      quickReplies[1].payload = "QR_ROTATION_2";
     break; 
-    case 'QR_ROTATION_B' :
+    case 'QR_ROTATION_2' :
       // 1 of 2 (portrait, landscape)
       attachment.payload = {
-        url: imgBasePath + "01-rotate-landscape.png"
+        url: IMG_BASE_PATH + "01-rotate-landscape.png"
       }
-      quickReplies[1].payload = "QR_ROTATION_C";
+      quickReplies[1].payload = "QR_ROTATION_3";
     break; 
-    case 'QR_ROTATION_C' :
+    case 'QR_ROTATION_3' :
       // 2 of 2 (portrait, landscape)
       attachment.payload = {
-        url: imgBasePath + "02-rotate-portrait.png"
+        url: IMG_BASE_PATH + "02-rotate-portrait.png"
       }
       quickReplies.pop();
       quickReplies[0].title = "Explore another feature";
@@ -599,28 +488,28 @@ function respondToHelpRequestWithLinearPhotos(recipientId, helpRequestType) {
 
 
     // the Photo feature
-    case 'QR_PHOTO_A' :
+    case 'QR_PHOTO_1' :
       textToSend = 'Click the Photo button to select an image to use on your poster. We recommend visiting https://unsplash.com/random from your device to seed your Downloads folder with some images before you get started.';
-      quickReplies[1].payload = "QR_PHOTO_B";
+      quickReplies[1].payload = "QR_PHOTO_2";
     break; 
-    case 'QR_PHOTO_B' :
+    case 'QR_PHOTO_2' :
       // 1 of 3 (placeholder image, Downloads folder, poster with image)
       attachment.payload = {
-        url: imgBasePath + "03-photo-hover.png"
+        url: IMG_BASE_PATH + "03-photo-hover.png"
       }
-      quickReplies[1].payload = "QR_PHOTO_C";
+      quickReplies[1].payload = "QR_PHOTO_3";
     break; 
-    case 'QR_PHOTO_C' :
+    case 'QR_PHOTO_3' :
       // 2 of 3 (placeholder image, Downloads folder, poster with image)
       attachment.payload = {
-        url: imgBasePath + "04-photo-list.png"
+        url: IMG_BASE_PATH + "04-photo-list.png"
       }
-      quickReplies[1].payload = "QR_PHOTO_D";
+      quickReplies[1].payload = "QR_PHOTO_4";
     break; 
-    case 'QR_PHOTO_D' :
+    case 'QR_PHOTO_4' :
       // 3 of 3 (placeholder image, Downloads folder, poster with image)
       attachment.payload = {
-        url: imgBasePath + "05-photo-selected.png"
+        url: IMG_BASE_PATH + "05-photo-selected.png"
       }
       quickReplies.pop();
       quickReplies[0].title = "Explore another feature";
@@ -629,35 +518,35 @@ function respondToHelpRequestWithLinearPhotos(recipientId, helpRequestType) {
 
 
     // the Caption feature
-    case 'QR_POSTER_TEXT_A' :
+    case 'QR_CAPTION_1' :
       textToSend = 'Click the Text button to set the caption that appears at the bottom of the poster.';
-      quickReplies[1].payload = "QR_POSTER_TEXT_B";
+      quickReplies[1].payload = "QR_CAPTION_2";
     break; 
-    case 'QR_POSTER_TEXT_B' :
+    case 'QR_CAPTION_2' :
       // 1 of 4 (hover, entering caption, mid-edit, poster with new caption)
       attachment.payload = {
-        url: imgBasePath + "06-text-hover.png"
+        url: IMG_BASE_PATH + "06-text-hover.png"
       }
-      quickReplies[1].payload = "QR_POSTER_TEXT_C";
+      quickReplies[1].payload = "QR_CAPTION_3";
     break; 
-    case 'QR_POSTER_TEXT_C' :
+    case 'QR_CAPTION_3' :
       // 2 of 4: (hover, entering caption, mid-edit, poster with new caption
       attachment.payload = {
-        url: imgBasePath + "07-text-mid-entry.png"
+        url: IMG_BASE_PATH + "07-text-mid-entry.png"
       }
-      quickReplies[1].payload = "QR_POSTER_TEXT_D";
+      quickReplies[1].payload = "QR_CAPTION_4";
     break; 
-    case 'QR_POSTER_TEXT_D' :
+    case 'QR_CAPTION_4' :
       // 3 of 4 (hover, entering caption, mid-edit, poster with new caption)
       attachment.payload = {
-        url: imgBasePath + "08-text-entry-done.png"
+        url: IMG_BASE_PATH + "08-text-entry-done.png"
       }
-      quickReplies[1].payload = "QR_POSTER_TEXT_E";
+      quickReplies[1].payload = "QR_CAPTION_5";
     break; 
-    case 'QR_POSTER_TEXT_E' :
+    case 'QR_CAPTION_5' :
       // 4 of 4 (hover, entering caption, mid-edit, poster with new caption)
       attachment.payload = {
-        url: imgBasePath + "09-text-complete.png"
+        url: IMG_BASE_PATH + "09-text-complete.png"
       }
       quickReplies.pop();
       quickReplies[0].title = "Explore another feature";
@@ -667,42 +556,42 @@ function respondToHelpRequestWithLinearPhotos(recipientId, helpRequestType) {
 
 
     // the Color Picker feature
-    case 'QR_BACKGROUND_COLOR_A' :
+    case 'QR_BACKGROUND_1' :
       textToSend = 'Click the Background button to select a background color for your poster.';
-      quickReplies[1].payload = "QR_BACKGROUND_COLOR_B";
+      quickReplies[1].payload = "QR_BACKGROUND_2";
     break; 
-    case 'QR_BACKGROUND_COLOR_B' :
+    case 'QR_BACKGROUND_2' :
       // 1 of 5 (hover, entering caption, mid-edit, poster with new caption)
       attachment.payload = {
-        url: SERVER_URL + "/assets/screenshots/10-background-picker-hover.png"
+        url: IMG_BASE_PATH + "10-background-picker-hover.png"
       }
-      quickReplies[1].payload = "QR_BACKGROUND_COLOR_C";
+      quickReplies[1].payload = "QR_BACKGROUND_3";
     break; 
-    case 'QR_BACKGROUND_COLOR_C' :
-      // 1 of 5 (hover, entering caption, mid-edit, poster with new caption)
+    case 'QR_BACKGROUND_3' :
+      // 2 of 5 (hover, entering caption, mid-edit, poster with new caption)
       attachment.payload = {
-        url: SERVER_URL + "/assets/screenshots/11-background-picker-appears.png"
+        url: IMG_BASE_PATH + "11-background-picker-appears.png"
       }
-      quickReplies[1].payload = "QR_BACKGROUND_COLOR_D";
+      quickReplies[1].payload = "QR_BACKGROUND_4";
     break; 
-    case 'QR_BACKGROUND_COLOR_D' :
-      // 1 of 5 (hover, entering caption, mid-edit, poster with new caption)
+    case 'QR_BACKGROUND_4' :
+      // 3 of 5 (hover, entering caption, mid-edit, poster with new caption)
       attachment.payload = {
-        url: SERVER_URL + "/assets/screenshots/12-background-picker-selection.png"
+        url: IMG_BASE_PATH + "12-background-picker-selection.png"
       }
-      quickReplies[1].payload = "QR_BACKGROUND_COLOR_E";
+      quickReplies[1].payload = "QR_BACKGROUND_5";
     break; 
-    case 'QR_BACKGROUND_COLOR_E' :
-      // 1 of 5 (hover, entering caption, mid-edit, poster with new caption)
+    case 'QR_BACKGROUND_5' :
+      // 4 of 5 (hover, entering caption, mid-edit, poster with new caption)
       attachment.payload = {
-        url: SERVER_URL + "/assets/screenshots/13-background-picker-selection-made.png"
+        url: IMG_BASE_PATH + "13-background-picker-selection-made.png"
       }
-      quickReplies[1].payload = "QR_BACKGROUND_COLOR_F";
+      quickReplies[1].payload = "QR_BACKGROUND_6";
     break; 
-    case 'QR_BACKGROUND_COLOR_F' :
-      // 1 of 5 (hover, entering caption, mid-edit, poster with new caption)
+    case 'QR_BACKGROUND_6' :
+      // 5 of 5 (hover, entering caption, mid-edit, poster with new caption)
       attachment.payload = {
-        url: SERVER_URL + "/assets/screenshots/14-background-changed.png"
+        url: IMG_BASE_PATH + "14-background-changed.png"
       }
       quickReplies.pop();
       quickReplies[0].title = "Explore another feature";
@@ -734,7 +623,6 @@ function respondToHelpRequestWithLinearPhotos(recipientId, helpRequestType) {
   callSendAPI(messageData);
 }
 
-
 /*
  * Delivery Confirmation Event
  *
@@ -743,8 +631,8 @@ function respondToHelpRequestWithLinearPhotos(recipientId, helpRequestType) {
  *
  */
 function receivedDeliveryConfirmation(event) {
-  var senderID = event.sender.id;
-  var recipientID = event.recipient.id;
+  var senderID = event.sender.id; // the user who sent the message
+  var recipientID = event.recipient.id; // the page they sent it from
   var delivery = event.delivery;
   var messageIDs = delivery.mids;
   var watermark = delivery.watermark;
@@ -752,14 +640,13 @@ function receivedDeliveryConfirmation(event) {
 
   if (messageIDs) {
     messageIDs.forEach(function(messageID) {
-      console.log("Received delivery confirmation for message ID: %s", 
+      console.log("[receivedDeliveryConfirmation] Message with ID %s was delivered", 
         messageID);
     });
   }
 
-  console.log("All message before %d were delivered.", watermark);
+  console.log("[receivedDeliveryConfirmation] All messages before timestamp %d were delivered.", watermark);
 }
-
 
 /*
  * Postback Event
@@ -777,162 +664,10 @@ function receivedPostback(event) {
   // button for Structured Messages. 
   var payload = event.postback.payload;
 
-  console.log("Received postback for user %d and page %d with payload '%s' " + 
-    "at %d", senderID, recipientID, payload, timeOfPostback);
-
-  // When a postback is called, we'll send a message back to the sender to 
-  // let them know it was successful
-  //sendTextMessage(senderID, "Postback called");
+  console.log("[receivedPostback] from user (%d) on page (%d) with payload ('%s') " + 
+    "at (%d)", senderID, recipientID, payload, timeOfPostback);
 
   respondToHelpRequestWithTemplates(senderID, payload);
-}
-
-/*
- * Message Read Event
- *
- * This event is called when a previously-sent message has been read.
- * https://developers.facebook.com/docs/messenger-platform/webhook-reference/message-read
- * 
- */
-function receivedMessageRead(event) {
-  var senderID = event.sender.id;
-  var recipientID = event.recipient.id;
-
-  // All messages before watermark (a timestamp) or sequence have been seen.
-  var watermark = event.read.watermark;
-  var sequenceNumber = event.read.seq;
-
-  console.log("Received message read event for watermark %d and sequence " +
-    "number %d", watermark, sequenceNumber);
-}
-
-/*
- * Account Link Event
- *
- * This event is called when the Link Account or UnLink Account action has been
- * tapped.
- * https://developers.facebook.com/docs/messenger-platform/webhook-reference/account-linking
- * 
- */
-function receivedAccountLink(event) {
-  var senderID = event.sender.id;
-  var recipientID = event.recipient.id;
-
-  var status = event.account_linking.status;
-  var authCode = event.account_linking.authorization_code;
-
-  console.log("Received account link event with for user %d with status %s " +
-    "and auth code %s ", senderID, status, authCode);
-}
-
-/*
- * Send an image using the Send API.
- *
- */
-function sendImageMessage(recipientId) {
-  var messageData = {
-    recipient: {
-      id: recipientId
-    },
-    message: {
-      attachment: {
-        type: "image",
-        payload: {
-          url: SERVER_URL + "/assets/rift.png"
-        }
-      }
-    }
-  };
-
-  callSendAPI(messageData);
-}
-
-/*
- * Send a Gif using the Send API.
- *
- */
-function sendGifMessage(recipientId) {
-  var messageData = {
-    recipient: {
-      id: recipientId
-    },
-    message: {
-      attachment: {
-        type: "image",
-        payload: {
-          url: SERVER_URL + "/assets/instagram_logo.gif"
-        }
-      }
-    }
-  };
-
-  callSendAPI(messageData);
-}
-
-/*
- * Send audio using the Send API.
- *
- */
-function sendAudioMessage(recipientId) {
-  var messageData = {
-    recipient: {
-      id: recipientId
-    },
-    message: {
-      attachment: {
-        type: "audio",
-        payload: {
-          url: SERVER_URL + "/assets/sample.mp3"
-        }
-      }
-    }
-  };
-
-  callSendAPI(messageData);
-}
-
-/*
- * Send a video using the Send API.
- *
- */
-function sendVideoMessage(recipientId) {
-  var messageData = {
-    recipient: {
-      id: recipientId
-    },
-    message: {
-      attachment: {
-        type: "video",
-        payload: {
-          url: SERVER_URL + "/assets/allofus480.mov"
-        }
-      }
-    }
-  };
-
-  callSendAPI(messageData);
-}
-
-/*
- * Send a file using the Send API.
- *
- */
-function sendFileMessage(recipientId) {
-  var messageData = {
-    recipient: {
-      id: recipientId
-    },
-    message: {
-      attachment: {
-        type: "file",
-        payload: {
-          url: SERVER_URL + "/assets/test.txt"
-        }
-      }
-    }
-  };
-
-  callSendAPI(messageData);
 }
 
 /*
@@ -945,241 +680,10 @@ function sendTextMessage(recipientId, messageText) {
       id: recipientId
     },
     message: {
-      text: messageText,
+      text: messageText, // utf-8, 640-character max
       metadata: "DEVELOPER_DEFINED_METADATA"
     }
   };
-
-  callSendAPI(messageData);
-}
-
-/*
- * Send a button message using the Send API.
- *
- */
-function sendButtonMessage(recipientId) {
-  var messageData = {
-    recipient: {
-      id: recipientId
-    },
-    message: {
-      attachment: {
-        type: "template",
-        payload: {
-          template_type: "button",
-          text: "This is test text",
-          buttons:[{
-            type: "web_url",
-            url: "https://www.oculus.com/en-us/rift/",
-            title: "Open Web URL"
-          }, {
-            type: "postback",
-            title: "Trigger Postback",
-            payload: "DEVELOPER_DEFINED_PAYLOAD"
-          }, {
-            type: "phone_number",
-            title: "Call Phone Number",
-            payload: "+16505551234"
-          }]
-        }
-      }
-    }
-  };  
-
-  callSendAPI(messageData);
-}
-
-/*
- * Send a Structured Message (Generic Message type) using the Send API.
- *
- */
-function sendGenericMessage(recipientId) {
-  var messageData = {
-    recipient: {
-      id: recipientId
-    },
-    message: {
-      attachment: {
-        type: "template",
-        payload: {
-          template_type: "generic",
-          elements: [{
-            title: "rift",
-            subtitle: "Next-generation virtual reality",
-            item_url: "https://www.oculus.com/en-us/rift/",               
-            image_url: SERVER_URL + "/assets/rift.png",
-            buttons: [{
-              type: "web_url",
-              url: "https://www.oculus.com/en-us/rift/",
-              title: "Open Web URL"
-            }, {
-              type: "postback",
-              title: "Call Postback",
-              payload: "Payload for first bubble",
-            }],
-          }, {
-            title: "touch",
-            subtitle: "Your Hands, Now in VR",
-            item_url: "https://www.oculus.com/en-us/touch/",               
-            image_url: SERVER_URL + "/assets/touch.png",
-            buttons: [{
-              type: "web_url",
-              url: "https://www.oculus.com/en-us/touch/",
-              title: "Open Web URL"
-            }, {
-              type: "postback",
-              title: "Call Postback",
-              payload: "Payload for second bubble",
-            }]
-          }]
-        }
-      }
-    }
-  };  
-
-  callSendAPI(messageData);
-}
-
-/*
- * Send a receipt message using the Send API.
- *
- */
-function sendReceiptMessage(recipientId) {
-  // Generate a random receipt ID as the API requires a unique ID
-  var receiptId = "order" + Math.floor(Math.random()*1000);
-
-  var messageData = {
-    recipient: {
-      id: recipientId
-    },
-    message:{
-      attachment: {
-        type: "template",
-        payload: {
-          template_type: "receipt",
-          recipient_name: "Peter Chang",
-          order_number: receiptId,
-          currency: "USD",
-          payment_method: "Visa 1234",        
-          timestamp: "1428444852", 
-          elements: [{
-            title: "Oculus Rift",
-            subtitle: "Includes: headset, sensor, remote",
-            quantity: 1,
-            price: 599.00,
-            currency: "USD",
-            image_url: SERVER_URL + "/assets/riftsq.png"
-          }, {
-            title: "Samsung Gear VR",
-            subtitle: "Frost White",
-            quantity: 1,
-            price: 99.99,
-            currency: "USD",
-            image_url: SERVER_URL + "/assets/gearvrsq.png"
-          }],
-          address: {
-            street_1: "1 Hacker Way",
-            street_2: "",
-            city: "Menlo Park",
-            postal_code: "94025",
-            state: "CA",
-            country: "US"
-          },
-          summary: {
-            subtotal: 698.99,
-            shipping_cost: 20.00,
-            total_tax: 57.67,
-            total_cost: 626.66
-          },
-          adjustments: [{
-            name: "New Customer Discount",
-            amount: -50
-          }, {
-            name: "$100 Off Coupon",
-            amount: -100
-          }]
-        }
-      }
-    }
-  };
-
-  callSendAPI(messageData);
-}
-
-/*
- * Send a read receipt to indicate the message has been read
- *
- */
-function sendReadReceipt(recipientId) {
-  console.log("Sending a read receipt to mark message as seen");
-
-  var messageData = {
-    recipient: {
-      id: recipientId
-    },
-    sender_action: "mark_seen"
-  };
-
-  callSendAPI(messageData);
-}
-
-/*
- * Turn typing indicator on
- *
- */
-function sendTypingOn(recipientId) {
-  console.log("Turning typing indicator on");
-
-  var messageData = {
-    recipient: {
-      id: recipientId
-    },
-    sender_action: "typing_on"
-  };
-
-  callSendAPI(messageData);
-}
-
-/*
- * Turn typing indicator off
- *
- */
-function sendTypingOff(recipientId) {
-  console.log("Turning typing indicator off");
-
-  var messageData = {
-    recipient: {
-      id: recipientId
-    },
-    sender_action: "typing_off"
-  };
-
-  callSendAPI(messageData);
-}
-
-/*
- * Send a message with the account linking call-to-action
- *
- */
-function sendAccountLinking(recipientId) {
-  var messageData = {
-    recipient: {
-      id: recipientId
-    },
-    message: {
-      attachment: {
-        type: "template",
-        payload: {
-          template_type: "button",
-          text: "Welcome. Link your account.",
-          buttons:[{
-            type: "account_link",
-            url: SERVER_URL + "/authorize"
-          }]
-        }
-      }
-    }
-  };  
 
   callSendAPI(messageData);
 }
@@ -1192,7 +696,7 @@ function sendAccountLinking(recipientId) {
 function callSendAPI(messageData) {
   request({
     uri: 'https://graph.facebook.com/v2.6/me/messages',
-    qs: { access_token: PAGE_ACCESS_TOKEN }, // query string
+    qs: { access_token: PAGE_ACCESS_TOKEN },
     method: 'POST',
     json: messageData
 
@@ -1202,23 +706,25 @@ function callSendAPI(messageData) {
       var messageId = body.message_id;
 
       if (messageId) {
-        console.log("Successfully sent message with id %s to recipient %s", 
+        console.log("[callSendAPI] Successfully sent message with id %s to recipient %s", 
           messageId, recipientId);
       } else {
-      console.log("Successfully called Send API for recipient %s", 
+      console.log("[callSendAPI] Successfully called Send API for recipient %s", 
         recipientId);
       }
     } else {
-      console.error("Failed calling Send API", response.statusCode, response.statusMessage, body.error);
+      console.error("[callSendAPI] Send API call failed", response.statusCode, response.statusMessage, body.error);
     }
   });  
 }
 
-// Start server
-// Webhooks must be available via SSL with a certificate signed by a valid 
-// certificate authority.
+/*
+ * Start server
+ * Webhooks must be available via SSL with a certificate signed by a valid 
+ * certificate authority.
+ */
 app.listen(app.get('port'), function() {
-  console.log('Node app is running on port', app.get('port'));
+  console.log('[app.listen] Node app is running on port', app.get('port'));
 });
 
 module.exports = app;
