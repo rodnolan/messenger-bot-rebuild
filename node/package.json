@@ -1,9 +1,10 @@
 {
-  "name": "messenger-get-started",
+  "name": "messenger-bot-rebuild",
   "version": "1.0.0",
-  "description": "Get started example for Messenger Platform",
+  "description": "Sample Messenger Bot for the Facebook Platform TTT events",
   "main": "app.js",
   "start-comment": "adding these two flags (--inspect --debug-brk) will make the node app debuggable using chrome dev tools",
+  "debug-comment": "this script is linked to a run configuration in VSCode to make the node app debuggable in the IDE",
   "scripts": {
     "start": "node app.js", 
     "debug": "node --nolazy --debug-brk=5858 app.js",
@@ -12,9 +13,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/fbsamples/messenger-platform-samples.git"
+    "url": "https://github.com/rodnolan/messenger-bot-rebuild.git"
   },
-  "author": "Facebook",
+  "author": "Facebook, Rod Nolan",
   "license": "ISC",
   "dependencies": {
     "body-parser": "^1.15.0",
