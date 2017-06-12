@@ -119,13 +119,7 @@ app.post('/webhook', function (req, res) {
 
   // Make sure this is a page subscription
   if (data.object == 'page') {
-    // entries may be batched so iterate over each one
-    data.entry.forEach(function(pageEntry) {
-      var pageID = pageEntry.id;
-      var timeOfEvent = pageEntry.time;
-
-      
-    });
+    
 
     // Assume all went well.
     //
