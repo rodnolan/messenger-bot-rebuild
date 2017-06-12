@@ -130,15 +130,8 @@ app.post('/webhook', function (req, res) {
         let propertyNames = [];
         for (var prop in messagingEvent) { propertyNames.push(prop)}
         console.log("[app.post] Webhook received a messagingEvent with properties: ", propertyNames.join());
-        
-        if (messagingEvent.message) {
-          // someone sent a message
-          receivedMessage(messagingEvent);
+        console.log("[app.post] Webhook is not prepared to handle this message.");
 
-        } else {
-          console.log("[app.post] Webhook is not prepared to handle this message.");
-
-        }
       });
     });
 
@@ -149,29 +142,6 @@ app.post('/webhook', function (req, res) {
     res.sendStatus(200);
   }
 });
-
-/*
- * Message Event
- *
- * This event is called when a message is sent to your page. The 'message' 
- * object format can vary depending on the kind of message that was received.
- * Read more at https://developers.facebook.com/docs/messenger-platform/webhook-reference/message-received
- * 
- */
-function receivedMessage(event) {
-  var senderID = event.sender.id;
-  var pageID = event.recipient.id;
-  var timeOfMessage = event.timestamp;
-  var message = event.message;
-
-  console.log("[receivedMessage] user (%d) page (%d) timestamp (%d) and message (%s)", 
-    senderID, pageID, timeOfMessage, JSON.stringify(message));
-
-  var messageText = message.text;
-  if (messageText) {
-    sendTextMessage(senderID, messageText);
-  }
-}
 
 /*
  * Send a text message using the Send API.
