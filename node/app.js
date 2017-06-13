@@ -79,8 +79,8 @@ function verifyRequestSignature(req, res, buf) {
                         .update(buf)
                         .digest('hex');
 
-    console.log("received  %s", signatureHash);
-    console.log("exepected %s", expectedHash);
+    // console.log("received  %s", signatureHash);
+    // console.log("exepected %s", expectedHash);
     if (signatureHash != expectedHash) {
       throw new Error("Couldn't validate the request signature.");
     }
@@ -118,11 +118,48 @@ app.post('/webhook', function (req, res) {
   var data = req.body;
   //Make sure this message is from a page
   if (data.object == 'page') {
+    // entries from multiple pages may be batched in one request
+    data.entry.forEach(function(pageEntry) {
+    
+      // iterate over each messaging event for this page
+      pageEntry.messaging.forEach(function(messagingEvent) {
+        let propertyNames = [];
+        for (var prop in messagingEvent) { propertyNames.push(prop) }
+        console.log("[app.post] Webhook event props: ", propertyNames.join());
+
+        if (messagingEvent.message) {
+          processMessageFromPage(messagingEvent);
+        } else {
+          console.log("[app.post] not prepared to handle this message type.");
+        }
+
+      });
+    });
     res.sendStatus(200);
-  }
+  }     
 });
 
+/*
+ * Called when a message is sent to your page. 
+ * 
+ */
+function processMessageFromPage(event) {
+  var senderID = event.sender.id;
+  var pageID = event.recipient.id;
+  var timeOfMessage = event.timestamp;
+  var message = event.message;
 
+  console.log("[processMessageFromPage] user (%d) page (%d) timestamp (%d) and message (%s)", 
+    senderID, pageID, timeOfMessage, JSON.stringify(message));
+
+  // the 'message' object format can vary depending on the kind of message that was received.
+  // See: https://developers.facebook.com/docs/messenger-platform/webhook-reference/message-received
+  var messageText = message.text;
+  if (messageText) {
+    console.log("[processMessageFromPage]: %s", messageText); 
+    //sendTextMessage(senderID, messageText);
+  }
+}
 
 /*
  * Start your server
