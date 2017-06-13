@@ -1,6 +1,6 @@
 {
     "appSecret": "[App Dashboard > Dashboard > click the Show button in the App Secret field]",
-    "pageAccessToken": "[App Dashboard > Messenger > Settings > Token Generation > select your page > copy the token that appears]",
-    "validationToken": "[App Dashboard > Webhooks > Edit Subscription > copy whatever random value you decide to use in the Verify Token field]",
-    "serverURL": "[get the subdomain from your ngrok console (leave out 'https://')].ngrok.io"
+    "pageAccessToken": "EAAUp7d1cnWEBAOAnzJtHWD7bsqKOwpAiutOs8wNu5s4kC94UZBEGSGg7aYIysikCtONdN3Qf2wk3nJ4JKDK3aqZCnAWHXZAPn1y5yyX1C7EWw5Pe1NkdNjlcQbCZAc6Iw1izIn37gDZAK1L3JO8a7yZBZB0AweQx3zZAUKReF5KSZAAZDZD",
+    "validationToken": "TheyShotAMovieOnceInMyHometown",
+    "serverURL": "1620d1e0.ngrok.io"
 }

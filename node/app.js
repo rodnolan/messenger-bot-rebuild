@@ -55,6 +55,24 @@ if (!(APP_SECRET && VALIDATION_TOKEN && PAGE_ACCESS_TOKEN && SERVER_URL)) {
 }
 
 /*
+ * Verify that your validation token matches the one that is sent 
+ * from the App Dashboard during the webhook verification check.
+ * Only then should you respond to the request with the 
+ * challenge that was sent. 
+ */
+app.get('/webhook', function(req, res) {
+  if (req.query['hub.mode'] === 'subscribe' &&
+      req.query['hub.verify_token'] === VALIDATION_TOKEN) {
+    console.log("[app.get] Validating webhook");
+    res.status(200).send(req.query['hub.challenge']);
+  } else {
+    console.error("Failed validation. Validation token mismatch.");
+    res.sendStatus(403);          
+  }  
+});
+
+
+/*
  * Start your server
  */
 app.listen(app.get('port'), function() {
