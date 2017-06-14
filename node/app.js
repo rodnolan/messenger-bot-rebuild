@@ -163,8 +163,8 @@ function processPostbackMessage(event) {
     "at (%d)", 
     senderID, recipientID, payload, timeOfPostback);
 
-  //respondToHelpRequestWithTemplates(senderID, payload);
-  respondToHelpRequestWithImageAttachments(senderID, payload);
+  respondToHelpRequestWithTemplates(senderID, payload);
+  //respondToHelpRequestWithImageAttachments(senderID, payload);
 }
 
 /*
@@ -262,10 +262,10 @@ function handleQuickReplyResponse(event) {
   // respond to the sender's help request by presenting a carousel-style 
   // set of screenshots of the application in action 
   // each response includes all the content for the requested feature
-  //respondToHelpRequestWithTemplates(senderID, quickReplyPayload);    
+  respondToHelpRequestWithTemplates(senderID, quickReplyPayload);    
 
   // respond to the senders help request by presenting one image at a time
-  respondToHelpRequestWithImageAttachments(senderID, quickReplyPayload);
+  //respondToHelpRequestWithImageAttachments(senderID, quickReplyPayload);
 }
 
 
